@@ -1,5 +1,5 @@
 using System.IO;
-﻿using System;
+using System;
 using System.Linq;
 using System.Reflection;
 using Microsoft.AspNetCore.Builder;
@@ -19,6 +19,10 @@ using Abp.Dependency;
 using Abp.Json;
 using Microsoft.OpenApi.Models;
 using Newtonsoft.Json.Serialization;
+using Abp.IdentityServer4;
+using template.Authorization.Users;
+using template.Authentication.JwtBearer;
+using System.Collections.Generic;
 
 namespace template.Web.Host.Startup
 {
@@ -54,6 +58,21 @@ namespace template.Web.Host.Startup
 
 
             IdentityRegistrar.Register(services);
+
+            services.AddIdentityServer()
+                .AddDeveloperSigningCredential()
+                .AddInMemoryIdentityResources(IdentityServerConfig.GetIdentityResources())
+                .AddInMemoryApiResources(IdentityServerConfig.GetApiResources())
+                .AddInMemoryClients(IdentityServerConfig.GetClients())
+                .AddAbpPersistedGrants<IAbpPersistedGrantDbContext>()
+                .AddAbpIdentityServer<User>();
+
+            services.AddAuthentication().AddIdentityServerAuthentication("IdentityBearer", options =>
+            {
+                options.Authority = "http://localhost:21021/";
+                options.RequireHttpsMetadata = false;
+            });
+
             AuthConfigurer.Configure(services, _appConfiguration);
 
             services.AddSignalR();
@@ -100,12 +119,29 @@ namespace template.Web.Host.Startup
                 options.DocInclusionPredicate((docName, description) => true);
 
                 // Define the BearerAuth scheme that's in use
-                options.AddSecurityDefinition("bearerAuth", new OpenApiSecurityScheme()
+                // options.AddSecurityDefinition("bearerAuth", new OpenApiSecurityScheme()
+                // {
+                //     Description = "JWT Authorization header using the Bearer scheme. Example: \"Authorization: Bearer {token}\"",
+                //     Name = "Authorization",
+                //     In = ParameterLocation.Header,
+                //     Type = SecuritySchemeType.ApiKey
+                // });
+                options.AddSecurityDefinition("oauth2", new OpenApiSecurityScheme
                 {
-                    Description = "JWT Authorization header using the Bearer scheme. Example: \"Authorization: Bearer {token}\"",
-                    Name = "Authorization",
-                    In = ParameterLocation.Header,
-                    Type = SecuritySchemeType.ApiKey
+                    Type = SecuritySchemeType.OAuth2,
+                    Flows = new OpenApiOAuthFlows
+                    {
+
+                        AuthorizationCode = new OpenApiOAuthFlow
+                        {
+                            AuthorizationUrl = new Uri("http://localhost:21021/connect/authorize"),
+                            TokenUrl = new Uri("http://localhost:21021/connect/token"),
+                            Scopes = new Dictionary<string, string>
+                            {
+                                {"default-api", "Demo API - full access"}
+                            }
+                        }
+                    }
                 });
             });
 
@@ -118,22 +154,25 @@ namespace template.Web.Host.Startup
             );
         }
 
-        public void Configure(IApplicationBuilder app,  ILoggerFactory loggerFactory)
+        public void Configure(IApplicationBuilder app, ILoggerFactory loggerFactory)
         {
             app.UseAbp(options => { options.UseAbpRequestLocalization = false; }); // Initializes ABP framework.
 
             app.UseCors(_defaultCorsPolicyName); // Enable CORS!
 
-app.Use(async (context, next) =>                {                    await next();                    if (context.Response.StatusCode == 404                        && !Path.HasExtension(context.Request.Path.Value)                        && !context.Request.Path.Value.StartsWith("/api/services", StringComparison.InvariantCultureIgnoreCase))                    {                        context.Request.Path = "/index.html";                        await next();                    }                });
+            app.Use(async (context, next) => { await next(); if (context.Response.StatusCode == 404 && !Path.HasExtension(context.Request.Path.Value) && !context.Request.Path.Value.StartsWith("/api/services", StringComparison.InvariantCultureIgnoreCase)) { context.Request.Path = "/index.html"; await next(); } });
             app.UseStaticFiles();
 
             app.UseRouting();
 
             app.UseAuthentication();
 
+            app.UseJwtTokenMiddleware("IdentityBearer");
+            app.UseIdentityServer();
+
             app.UseAbpRequestLocalization();
 
-          
+
             app.UseEndpoints(endpoints =>
             {
                 endpoints.MapHub<AbpCommonHub>("/signalr");
@@ -147,8 +186,14 @@ app.Use(async (context, next) =>                {                    await next(
             // Enable middleware to serve swagger-ui assets (HTML, JS, CSS etc.)
             app.UseSwaggerUI(options =>
             {
-                // specifying the Swagger JSON endpoint.
+                // para se autenticar no Oauth
+                options.OAuthClientId("client");
+                options.OAuthClientSecret("secret");
+                options.OAuthAppName("Demo API - Swagger");
+                options.OAuthUsePkce();
+                // // specifying the Swagger JSON endpoint.
                 options.SwaggerEndpoint($"/swagger/{_apiVersion}/swagger.json", $"template API {_apiVersion}");
+                // HACK: sobreescrevendo a pagina do swagger para apacer "login do abp"
                 options.IndexStream = () => Assembly.GetExecutingAssembly()
                     .GetManifestResourceStream("template.Web.Host.wwwroot.swagger.ui.index.html");
                 options.DisplayRequestDuration(); // Controls the display of the request duration (in milliseconds) for "Try it out" requests.  

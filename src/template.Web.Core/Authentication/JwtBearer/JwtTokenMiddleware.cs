@@ -6,13 +6,18 @@ namespace template.Authentication.JwtBearer
 {
     public static class JwtTokenMiddleware
     {
-        public static IApplicationBuilder UseJwtTokenMiddleware(this IApplicationBuilder app, string schema = JwtBearerDefaults.AuthenticationScheme)
+        public static IApplicationBuilder UseJwtTokenMiddleware(this IApplicationBuilder app)
+        {
+            return UseJwtTokenMiddleware(app, JwtBearerDefaults.AuthenticationScheme);
+        }
+
+        public static IApplicationBuilder UseJwtTokenMiddleware(this IApplicationBuilder app, string authenticationScheme)
         {
             return app.Use(async (ctx, next) =>
             {
                 if (ctx.User.Identity?.IsAuthenticated != true)
                 {
-                    var result = await ctx.AuthenticateAsync(schema);
+                    var result = await ctx.AuthenticateAsync(authenticationScheme);
                     if (result.Succeeded && result.Principal != null)
                     {
                         ctx.User = result.Principal;
@@ -21,6 +26,6 @@ namespace template.Authentication.JwtBearer
 
                 await next();
             });
-        }
+        }        
     }
 }

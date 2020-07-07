@@ -4,13 +4,15 @@ using template.Authorization.Roles;
 using template.Authorization.Users;
 using template.MultiTenancy;
 using Abp.Localization;
+using Abp.IdentityServer4;
 
 namespace template.EntityFrameworkCore
 {
-    public class templateDbContext : AbpZeroDbContext<Tenant, Role, User, templateDbContext>
+    public class templateDbContext : AbpZeroDbContext<Tenant, Role, User, templateDbContext>, IAbpPersistedGrantDbContext
     {
         /* Define a DbSet for each entity of the application */
-        
+        public DbSet<PersistedGrantEntity> PersistedGrants { get; set; }
+
         public templateDbContext(DbContextOptions<templateDbContext> options)
             : base(options)
         {
@@ -25,6 +27,8 @@ namespace template.EntityFrameworkCore
             modelBuilder.Entity<ApplicationLanguageText>()
                 .Property(p => p.Value)
                 .HasMaxLength(100); // any integer that is smaller than 10485760
+
+            modelBuilder.ConfigurePersistedGrantEntity();
         }
     }
 }
